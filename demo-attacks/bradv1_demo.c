@@ -23,7 +23,7 @@ volatile uint8_t array1[1] = {1};
 // condBranch: check byte at addr
 void condBranch(uint8_t *addr) {
     if (*addr) {
-        asm("nop , nop\n");
+        asm("nop ; nop\n");
     } else {
         asm(" addi t1 , zero , 2\n");
     }
