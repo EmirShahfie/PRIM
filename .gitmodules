@@ -1,6 +1,0 @@
-[submodule "boom-attacks"]
-	path = boom-attacks
-	url = https://github.com/riscv-boom/boom-attacks.git
-[submodule "Security-RISC"]
-	path = Security-RISC
-	url = https://github.com/cispa/Security-RISC.git
