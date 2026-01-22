@@ -16,7 +16,6 @@ static inline uint64_t time(void) {
     return v;
 }
 
-// indirJump helper: 
 void indirJump(int val) {
     void *target_addr = (void *)( val ? &&T2 : &&T1 );
     goto *target_addr;
@@ -28,7 +27,7 @@ void indirJump(int val) {
 }
 
 int main(void) {
-    printf("PINK with indirJump helper (rdcycle timing)\n");
+    printf("IBPA with indirJump helper (rdcycle timing)\n");
     printf("secret: ");
     for (int i = 0; i < SECRET_LEN; ++i) printf("%d ", (int)sec_data[i]);
     printf("\nATTACK_ROUNDS = %d\n\n", ATTACK_ROUNDS);

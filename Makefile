@@ -15,44 +15,39 @@ CFLAGS   := -std=gnu99 -O2 -Wall -Wextra \
             -march=rv64imafd -mabi=lp64d -mcmodel=medany \
             -specs=$(SPECS)
 
-# Use chipyard's htif.ld from tests (adjust if yours is elsewhere)
 LDSCRIPT := $(CHIPYARD)/tests/htif.ld
 LDFLAGS  := -static -T $(LDSCRIPT)
 
-# ---------- FPGA / Vivado config ----------
 VIVADO          ?= vivado
 FPGA_PROCS_DIR  := $(PRIM_DIR)/fpga-procs
 BRAD_BIT        := $(FPGA_PROCS_DIR)/BradBoom.bit
 SPECTRE_BIT     := $(FPGA_PROCS_DIR)/SpectreBoom.bit
 TCL_SCRIPT      := program_fpga.tcl
 
-# ----- Apps -----
-BRADV1_SRC      := $(PRIM_DIR)/demo-attacks/bradv1.c
+CBPA_SRC      := $(PRIM_DIR)/demo-attacks/CBPA.c
 SMARTLOCK_SRC   := $(PRIM_DIR)/demo-attacks/smart-lock.c
 
-BRADV1_ELF      := $(PRIM_BUILDS)/bradv1.riscv
+CBPA_ELF      := $(PRIM_BUILDS)/CBPA.riscv
 SMARTLOCK_ELF   := $(PRIM_BUILDS)/smart-lock.riscv
-PINK_ELF        := $(PRIM_BUILDS)/pink.riscv
+IBPA_ELF        := $(PRIM_BUILDS)/IBPA.riscv
 
-BRADV1_DUMP     := $(PRIM_BUILDS)/bradv1.dump
+CBPA_DUMP     := $(PRIM_BUILDS)/CBPA.dump
 SMARTLOCK_DUMP  := $(PRIM_BUILDS)/smart-lock.dump
-PINK_DUMP      := $(PRIM_BUILDS)/pink.dump
+IBPA_DUMP      := $(PRIM_BUILDS)/IBPA.dump
 
-.PHONY: all build-bradv1 build-smart-lock run-bradv1 run-smart-lock \
-        dump-bradv1 dump-smart-lock dump-pink flash-brad flash-spectre clean
+.PHONY: all build-CBPA build-smart-lock run-CBPA run-smart-lock \
+        dump-CBPA dump-smart-lock dump-IBPA flash-brad flash-spectre clean
 
-all: build-bradv1 build-smart-lock
+all: build-CBPA build-smart-lock
 
-# Ensure output dir exists
 $(PRIM_BUILDS):
 	@mkdir -p "$@"
 
-# ---------- Build ----------
-build-bradv1: $(BRADV1_ELF)
+build-CBPA: $(CBPA_ELF)
 build-smart-lock: $(SMARTLOCK_ELF)
-build-pink: $(PINK_ELF)
+build-IBPA: $(IBPA_ELF)
 
-$(BRADV1_ELF): $(BRADV1_SRC) | $(PRIM_BUILDS)
+$(CBPA_ELF): $(CBPA_SRC) | $(PRIM_BUILDS)
 	source "$(CHIPYARD)/env.sh" && \
 	$(RISCV_PREFIX)-gcc $(CFLAGS) $< $(LDFLAGS) -o $@
 
@@ -60,44 +55,40 @@ $(SMARTLOCK_ELF): $(SMARTLOCK_SRC) | $(PRIM_BUILDS)
 	source "$(CHIPYARD)/env.sh" && \
 	$(RISCV_PREFIX)-gcc $(CFLAGS) $< $(LDFLAGS) -o $@
 
-$(PINK_ELF): $(PRIM_DIR)/demo-attacks/pink.c | $(PRIM_BUILDS)
+$(IBPA_ELF): $(PRIM_DIR)/demo-attacks/IBPA.c | $(PRIM_BUILDS)
 	source "$(CHIPYARD)/env.sh" && \
 	$(RISCV_PREFIX)-gcc $(CFLAGS) $< $(LDFLAGS) -o $@
 
-# ---------- Dump ----------
-dump-bradv1: $(BRADV1_DUMP)
+dump-CBPA: $(CBPA_DUMP)
 dump-smart-lock: $(SMARTLOCK_DUMP)
-dump-pink: $(PINK_DUMP)
+dump-IBPA: $(IBPA_DUMP)
 
-$(BRADV1_DUMP): $(BRADV1_ELF) | $(PRIM_BUILDS)
+$(CBPA_DUMP): $(CBPA_ELF) | $(PRIM_BUILDS)
 	$(RISCV_PREFIX)-objdump -D $< > $@
 
 $(SMARTLOCK_DUMP): $(SMARTLOCK_ELF) | $(PRIM_BUILDS)
 	$(RISCV_PREFIX)-objdump -D $< > $@
 
-$(PINK_DUMP): $(PINK_ELF) | $(PRIM_BUILDS)
+$(IBPA_DUMP): $(IBPA_ELF) | $(PRIM_BUILDS)
 	$(RISCV_PREFIX)-objdump -D $< > $@
 
-# ---------- Run ----------
-run-bradv1: $(BRADV1_ELF)
+run-CBPA: $(CBPA_ELF)
 	source "$(CHIPYARD)/env.sh" && \
-	"$(UART_TSI)" +tty=$(TTY) "$(BRADV1_ELF)"
+	"$(UART_TSI)" +tty=$(TTY) "$(CBPA_ELF)"
 
 run-smart-lock: $(SMARTLOCK_ELF)
 	source "$(CHIPYARD)/env.sh" && \
 	"$(UART_TSI)" +tty=$(TTY) "$(SMARTLOCK_ELF)"
 
-run-pink: $(PINK_ELF)
+run-IBPA: $(IBPA_ELF)
 	source "$(CHIPYARD)/env.sh" && \
-	"$(UART_TSI)" +tty=$(TTY) "$(PINK_ELF)"
+	"$(UART_TSI)" +tty=$(TTY) "$(IBPA_ELF)"
 
-# ---------- FPGA flash ----------
 flash-brad: $(BRAD_BIT)
 	$(VIVADO) -mode batch -source $(TCL_SCRIPT) -tclargs $(BRAD_BIT)
 
 flash-spectre: $(SPECTRE_BIT)
 	$(VIVADO) -mode batch -source $(TCL_SCRIPT) -tclargs $(SPECTRE_BIT)
 
-# ---------- Clean ----------
 clean:
-	rm -f "$(BRADV1_ELF)" "$(SMARTLOCK_ELF)" "$(BRADV1_DUMP)" "$(SMARTLOCK_DUMP)" "$(PINK_ELF)" "$(PINK_DUMP)"
+	rm -f "$(CBPA_ELF)" "$(SMARTLOCK_ELF)" "$(CBPA_DUMP)" "$(SMARTLOCK_DUMP)" "$(IBPA_ELF)" "$(IBPA_DUMP)"
