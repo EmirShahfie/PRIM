@@ -28,10 +28,10 @@ PRIM/
 │   ├── BoomNLP.bit        
 │   └── BoomTAGE.bit       
 └── demo-attacks/
-├── CBPA.c             
-├── IBPA.c            
-├── smart-lock.c
-└── rlibsc.h
+    ├── CBPA.c             
+    ├── IBPA.c            
+    ├── smart-lock.c
+    └── rlibsc.h
 ```
 
 ## Requirements
