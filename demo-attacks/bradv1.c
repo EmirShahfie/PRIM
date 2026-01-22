@@ -10,7 +10,7 @@
 // Configuration
 // ------------------------------------------------------------
 
-#define SECRET_DATA_LEN   16     // number of secret bits
+#define SECRET_DATA_LEN   8     // number of secret bits
 #define ATTACK_ROUNDS     500    // increase for cleaner distributions
 
 // ------------------------------------------------------------
@@ -21,8 +21,6 @@
 static volatile uint8_t sec_data[SECRET_DATA_LEN] = {
     1,0,0,1,
     0,1,1,0,
-    1,0,1,0,
-    1,1,0,0
 };
 
 // Attacker array: index 0 → value used for spy_f(0)
