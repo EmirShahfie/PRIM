@@ -95,9 +95,9 @@ fpga-procs/BoomTAGE.bit
 ### 1. Compile the attack
 From repository root:
 ```bash
-make build-cbpa    
+make build-CBPA   
     or
-make build-ibpa
+make build-IBPA
 ```
 
 ### 2. Load binary file
