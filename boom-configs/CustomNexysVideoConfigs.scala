@@ -1,31 +1,33 @@
-// ============================================================
+// ============================================================================
 // File: CustomNexysVideoConfigs.scala
+// Put this in your PRIM repo (e.g. PRIM/boom-configs/CustomNexysVideoConfigs.scala)
+// Copy destination in Chipyard:
+//   $(CHIPYARD)/fpga/src/main/scala/nexysvideo/configs/CustomNexysVideoConfigs.scala
+//   (OR the actual NexysVideo configs folder in your Chipyard checkout)
 //
-// Purpose:
-//   FPGA binding for the PRIM BOOM configuration.
-//   Maps BradBoomV3Config onto the Nexys Video board.
-//
-// This file should ONLY contain board-level composition.
-// Do NOT put BOOM microarchitecture params here.
-// ============================================================
+// Build example (Option A):
+//   make SUB_PROJECT=nexysvideo \
+//        CONFIG=CustomNexysVideoNLPConfig \
+//        CONFIG_PACKAGE=chipyard.fpga.nexysvideo \
+//        bitstream
+// ============================================================================
 
 package chipyard.fpga.nexysvideo
 
 import org.chipsalliance.cde.config.Config
-
-import chipyard.config.BradBoomV3Config
-import chipyard.fpga.nexysvideo.WithNexysVideoTweaks
+import chipyard.{CustomBoomV3NLPConfig, CustomBoomV3TAGEConfig}
 import chipyard.config.WithBroadcastManager
 
-/**
-  * Nexys Video FPGA configuration using the PRIM BOOM core.
-  *
-  * Usage (fpga/Makefile):
-  *   CONFIG ?= CustomNexysVideoConfig
-  *   CONFIG_PACKAGE ?= chipyard.fpga.nexysvideo
-  */
-class CustomNexysVideoConfig extends Config(
-  new WithNexysVideoTweaks ++      // clocks, DDR, IOs for Nexys
-  new WithBroadcastManager ++     // required memory system tweak
-  new BradBoomV3Config()          // your BOOM SoC
+// Nexys Video + BOOM V3 (NLP predictor variant)
+class CustomNexysVideoNLPConfig extends Config(
+  new WithNexysVideoTweaks ++
+  new WithBroadcastManager ++
+  new CustomBoomV3NLPConfig
+)
+
+// Nexys Video + BOOM V3 (Small TAGE predictor variant)
+class CustomNexysVideoTAGEConfig extends Config(
+  new WithNexysVideoTweaks ++
+  new WithBroadcastManager ++
+  new CustomBoomV3TAGEConfig
 )
