@@ -12,7 +12,7 @@ CHIPYARD ?=
 
 CONDA_ENV ?=
 
-UART_TSI        := $(CHIPYARD)/generators/testchipip/uart_tsi/uart_tsi
+UART_TSI        := $(PRIM_DIR)/demo-attacks/uart_tsi
 TTY             ?= /dev/ttyUSB0
 
 # =========================================================
