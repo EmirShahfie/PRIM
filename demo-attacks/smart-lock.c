@@ -158,7 +158,7 @@ static uint8_t attack_digit(int digit_idx)
         inferred_bits[digit_idx][bit_idx] = inferred;
         digit |= (inferred & 1u) << bit_idx;
 
-        printf("  Bit %d: avg(spy(0))=%lu, avg(spy(1))=%lu ",
+        printf("  Bit %d: avg(spy(0))=%lu, avg(spy(1))=%lu\n",
                bit_idx, avg0, avg1);
     }
 
