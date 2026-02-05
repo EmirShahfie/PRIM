@@ -35,7 +35,7 @@ FPGA_DST := $(CHIPYARD)/fpga/src/main/scala/nexysvideo/$(notdir $(FPGA_SRC))
 
 RISCV_PREFIX := riscv64-unknown-elf
 
-SPECS    := $(CHIPYARD)/tests/htif_nano.specs
+SPECS    := htif_nano.specs
 LDSCRIPT := $(CHIPYARD)/tests/htif.ld
 
 CFLAGS   := -std=gnu99 -O2 -Wall -Wextra \
