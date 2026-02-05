@@ -18,9 +18,6 @@
 #define TRAINING_RUNS       20     // branch predictor training per round
 #define ATTACK_ROUNDS       400    // rounds per bit (increase for cleaner signal)
 
-// Optional: a small minimum separation threshold (cycles) to mark bits as "uncertain"
-#define INFER_MIN_DIFF      0      // set e.g. 2..10 if you want to flag noisy bits
-
 // ------------------------------------------------------------
 // Global data
 // ------------------------------------------------------------
@@ -37,14 +34,12 @@ static volatile uint8_t array1[2] = {0, 1};
 // Secret as string, to compare with user guess
 static char secret_str[SECRET_LEN_DIGITS + 1];
 
-// Inferred results (recovered by timing)
-static uint8_t inferred_bits[SECRET_LEN_DIGITS][BITS_PER_DIGIT];
+// Inferred secret (from timings)
 static uint8_t inferred_digits[SECRET_LEN_DIGITS];
-static char inferred_str[SECRET_LEN_DIGITS + 1];
-
-// (Optional) store the last measured averages (nice for debugging/printing)
+static uint8_t inferred_bits[SECRET_LEN_DIGITS][BITS_PER_DIGIT];
 static unsigned long last_avg0[SECRET_LEN_DIGITS][BITS_PER_DIGIT];
 static unsigned long last_avg1[SECRET_LEN_DIGITS][BITS_PER_DIGIT];
+static char inferred_str[SECRET_LEN_DIGITS + 1];
 
 // ------------------------------------------------------------
 // Secret data initialization
@@ -72,11 +67,12 @@ static void init_secret_data(void)
     }
     secret_str[SECRET_LEN_DIGITS] = '\0';
 
-    // Init inferred string
-    memset(inferred_bits, 0, sizeof(inferred_bits));
+    // init inferred buffers
     memset(inferred_digits, 0, sizeof(inferred_digits));
-    memset(inferred_str, '0', sizeof(inferred_str));
-    inferred_str[SECRET_LEN_DIGITS] = '\0';
+    memset(inferred_bits, 0, sizeof(inferred_bits));
+    memset(last_avg0, 0, sizeof(last_avg0));
+    memset(last_avg1, 0, sizeof(last_avg1));
+    memset(inferred_str, 0, sizeof(inferred_str));
 }
 
 // ------------------------------------------------------------
@@ -112,7 +108,6 @@ static void spy_bit(uint8_t bit_value)
 
 // ------------------------------------------------------------
 // Attack: recover one digit (bit-by-bit)
-// Returns reconstructed digit (0..15), caller can clamp/interpret
 // ------------------------------------------------------------
 
 static uint8_t attack_digit(int digit_idx)
@@ -152,36 +147,40 @@ static uint8_t attack_digit(int digit_idx)
         unsigned long avg0 = sum0 / ATTACK_ROUNDS;
         unsigned long avg1 = sum1 / ATTACK_ROUNDS;
 
+        // store last averages
         last_avg0[digit_idx][bit_idx] = avg0;
         last_avg1[digit_idx][bit_idx] = avg1;
 
-        // Inference rule:
-        // After training on the victim's secret bit, the spy value that MATCHES the trained outcome
-        // is expected to be predicted better -> lower average cycles.
+        // inference rule: the "correct" outcome tends to be faster due to predictor state
+        // (tweak if your measurements show the opposite)
         uint8_t inferred = (avg1 < avg0) ? 1 : 0;
-
-        // Optional: flag uncertainty if the difference is too small
-        unsigned long diff = (avg0 > avg1) ? (avg0 - avg1) : (avg1 - avg0);
-        const char *qual = (diff < INFER_MIN_DIFF) ? " (uncertain)" : "";
 
         inferred_bits[digit_idx][bit_idx] = inferred;
         digit |= (inferred & 1u) << bit_idx;
 
-        printf("  Bit %d: avg(spy(0))=%lu, avg(spy(1))=%lu => inferred=%u%s\n",
-               bit_idx, avg0, avg1, inferred, qual);
+        printf("  Bit %d: avg(spy(0))=%lu, avg(spy(1))=%lu => inferred=%u\n",
+               bit_idx, avg0, avg1, inferred);
     }
 
     inferred_digits[digit_idx] = digit;
 
-    // If you want to constrain to 0..9 (since the real secret digit is 0..9),
-    // you can either keep the raw 0..15, or clamp:
-    // uint8_t shown = (digit <= 9) ? digit : (digit % 10);
-    uint8_t shown = (digit <= 9) ? digit : digit; // keep raw; change if you prefer
-
-    printf("=> Reconstructed digit[%d] = %u (raw 4-bit value)\n", digit_idx, shown);
     printf("==================================================\n");
+    return digit; // raw 0..15 (since 4 bits)
+}
 
-    return digit;
+static void build_inferred_string(void)
+{
+    for (int i = 0; i < SECRET_LEN_DIGITS; i++) {
+        uint8_t d = inferred_digits[i];
+
+        // Secret digits are 0..9. If inference produces 10..15, show '?'
+        if (d <= 9) inferred_str[i] = (char)('0' + d);
+        else        inferred_str[i] = '?';
+
+        // Alternative mapping (if you prefer always-a-digit):
+        // inferred_str[i] = (char)('0' + (d % 10));
+    }
+    inferred_str[SECRET_LEN_DIGITS] = '\0';
 }
 
 void wait(int seconds)
@@ -207,26 +206,22 @@ int main(void)
 
     init_secret_data();
 
-    // For each digit, leak its 4 bits and infer automatically
+    // For each digit, leak its 4 bits and print timing statistics
     for (int i = 0; i < SECRET_LEN_DIGITS; i++) {
-        uint8_t d = attack_digit(i);
-
-        // Convert to displayable char (real secret is 0..9).
-        // If you want a strict digit guess, use modulo 10:
-        // inferred_str[i] = (char)('0' + (d % 10));
-        if (d <= 9) inferred_str[i] = (char)('0' + d);
-        else        inferred_str[i] = '?'; // mark invalid digit if it decodes to 10..15
+        (void)attack_digit(i);
     }
-    inferred_str[SECRET_LEN_DIGITS] = '\0';
+
+    // Build final inferred code string (but print it only once, near the end)
+    build_inferred_string();
 
     printf("\nAll timing measurements completed.\n");
     printf("Now try to guess the %d-digit lock code based on the timings.\n", SECRET_LEN_DIGITS);
 
     wait(10);
 
-    // Print inferred code before revealing the real one
-    printf("Inferred secret (from timings): %s\n", inferred_str);
-    printf("Actual secret was: %s\n", secret_str);
+    // SINGLE inference line before revealing actual
+    printf("Inferred secret was: %s\n", inferred_str);
+    printf("Actual secret was:   %s\n", secret_str);
 
     return 0;
 }
