@@ -10,6 +10,8 @@ PRIM_CONFIGS    := $(PRIM_DIR)/boom-configs
 
 CHIPYARD ?=
 
+CONDA_ENV ?=
+
 UART_TSI        := $(CHIPYARD)/generators/testchipip/uart_tsi/uart_tsi
 TTY             ?= /dev/ttyUSB0
 
@@ -82,6 +84,7 @@ IBPA_DUMP       := $(PRIM_BUILDS)/IBPA.dump
 	flash-brad flash-spectre \
 	clean \
 	check-chipyard \
+	check-conda-env \
 	apply-boom-patch revert-boom-patch \
 	install-configs remove-configs \
 	compile-nlp compile-tage \
@@ -108,16 +111,23 @@ check-chipyard:
 		exit 1; \
 	fi
 
+check-conda-env:
+	@if [ -z "$(CONDA_ENV)" ]; then \
+		echo "ERROR: CONDA_ENV not set"; \
+		echo "Run: export CONDA_ENV=/path/to/conda.sh"; \
+		exit 1; \
+	fi
+
 # =========================================================
 # Patch management (idempotent)
 # =========================================================
 
-apply-boom-patch: check-chipyard
+apply-boom-patch: check-chipyard check-conda-env
 	@echo "Applying BOOM patch..."
 	cd "$(BOOM_REPO)" && (git apply --check "$(BOOM_PATCH)" && git apply "$(BOOM_PATCH)")
 	@echo "BOOM patch ready"
 
-revert-boom-patch: check-chipyard
+revert-boom-patch: check-chipyard check-conda-env
 	@echo "Reverting BOOM patch..."
 	cd "$(BOOM_REPO)" && git apply -R "$(BOOM_PATCH)" || true
 
@@ -125,12 +135,12 @@ revert-boom-patch: check-chipyard
 # Config copy
 # =========================================================
 
-install-configs: check-chipyard
+install-configs: check-chipyard check-conda-env
 	cp -f "$(BOOM_SRC)" "$(BOOM_DST)"
 	cp -f "$(FPGA_SRC)" "$(FPGA_DST)"
 	@echo "Configs installed"
 
-remove-configs: check-chipyard
+remove-configs: check-chipyard check-conda-env
 	rm -f "$(BOOM_DST)" "$(FPGA_DST)"
 
 # =========================================================
@@ -138,14 +148,14 @@ remove-configs: check-chipyard
 # =========================================================
 
 compile-nlp: apply-boom-patch install-configs
-	cd "$(CHIPYARD)/fpga" && source "$(CHIPYARD)/env.sh" && \
+	cd "$(CHIPYARD)/fpga" && source "$(CONDA_ENV)" && source "$(CHIPYARD)/env.sh" && \
 	make SUB_PROJECT=nexysvideo \
 		CONFIG=CustomNexysVideoNLPConfig \
 		CONFIG_PACKAGE=chipyard.fpga.nexysvideo \
 		$(CHIPYARD)/.classpath_cache/chipyard_fpga.jar
 
 compile-tage: apply-boom-patch install-configs
-	cd "$(CHIPYARD)/fpga" && source "$(CHIPYARD)/env.sh" && \
+	cd "$(CHIPYARD)/fpga" && source "$(CONDA_ENV)" && source "$(CHIPYARD)/env.sh" && \
 	make SUB_PROJECT=nexysvideo \
 		CONFIG=CustomNexysVideoTAGEConfig \
 		CONFIG_PACKAGE=chipyard.fpga.nexysvideo \
@@ -156,14 +166,14 @@ compile-tage: apply-boom-patch install-configs
 # =========================================================
 
 bitstream-nlp: apply-boom-patch install-configs
-	cd "$(CHIPYARD)/fpga" && source "$(CHIPYARD)/env.sh" && \
+	cd "$(CHIPYARD)/fpga" && source "$(CONDA_ENV)" && source "$(CHIPYARD)/env.sh" && \
 	make SUB_PROJECT=nexysvideo \
 		CONFIG=CustomNexysVideoNLPConfig \
 		CONFIG_PACKAGE=chipyard.fpga.nexysvideo \
 		bitstream
 
 bitstream-tage: apply-boom-patch install-configs
-	cd "$(CHIPYARD)/fpga" && source "$(CHIPYARD)/env.sh" && \
+	cd "$(CHIPYARD)/fpga" && source "$(CONDA_ENV)" && source "$(CHIPYARD)/env.sh" && \
 	make SUB_PROJECT=nexysvideo \
 		CONFIG=CustomNexysVideoTAGEConfig \
 		CONFIG_PACKAGE=chipyard.fpga.nexysvideo \
@@ -182,15 +192,15 @@ build-smart-lock: $(SMARTLOCK_ELF)
 build-IBPA: $(IBPA_ELF)
 
 $(CBPA_ELF): $(CBPA_SRC) | $(PRIM_BUILDS)
-	source "$(CHIPYARD)/env.sh" && \
+	source "$(CONDA_ENV)" && source "$(CHIPYARD)/env.sh" && \
 	$(RISCV_PREFIX)-gcc $(CFLAGS) $< $(LDFLAGS) -o $@
 
 $(SMARTLOCK_ELF): $(SMARTLOCK_SRC) | $(PRIM_BUILDS)
-	source "$(CHIPYARD)/env.sh" && \
+	source "$(CONDA_ENV)" && source "$(CHIPYARD)/env.sh" && \
 	$(RISCV_PREFIX)-gcc $(CFLAGS) $< $(LDFLAGS) -o $@
 
 $(IBPA_ELF): $(IBPA_SRC) | $(PRIM_BUILDS)
-	source "$(CHIPYARD)/env.sh" && \
+	source "$(CONDA_ENV)" && source "$(CHIPYARD)/env.sh" && \
 	$(RISCV_PREFIX)-gcc $(CFLAGS) $< $(LDFLAGS) -o $@
 
 dump-CBPA: $(CBPA_DUMP)
@@ -207,13 +217,13 @@ $(IBPA_DUMP): $(IBPA_ELF)
 	$(RISCV_PREFIX)-objdump -D $< > $@
 
 run-CBPA: $(CBPA_ELF)
-	source "$(CHIPYARD)/env.sh" && "$(UART_TSI)" +tty=$(TTY) $<
+	source "$(CONDA_ENV)" && source "$(CHIPYARD)/env.sh" && "$(UART_TSI)" +tty=$(TTY) $<
 
 run-smart-lock: $(SMARTLOCK_ELF)
-	source "$(CHIPYARD)/env.sh" && "$(UART_TSI)" +tty=$(TTY) $<
+	source "$(CONDA_ENV)" && source "$(CHIPYARD)/env.sh" && "$(UART_TSI)" +tty=$(TTY) $<
 
 run-IBPA: $(IBPA_ELF)
-	source "$(CHIPYARD)/env.sh" && "$(UART_TSI)" +tty=$(TTY) $<
+	source "$(CONDA_ENV)" && source "$(CHIPYARD)/env.sh" && "$(UART_TSI)" +tty=$(TTY) $<
 
 # =========================================================
 # Flash FPGA
